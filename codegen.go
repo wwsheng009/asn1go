@@ -8,6 +8,10 @@ import (
 	gotoken "go/token"
 	"io"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type CodeGenerator interface {
@@ -89,18 +93,80 @@ func (gen declCodeGen) Generate(module ModuleDefinition, writer io.Writer) error
 		}
 		return errors.New(msg)
 	}
+	for _, v := range module.ModuleBody.Imports {
+
+		mname := goifyName(v.Module.Reference)
+		ctx.requireModule(mname)
+		// for _, Symbol := range v.SymbolList {
+		// 	switch t := Symbol.(type) {
+		// 	case TypeReference:
+		// 		{
+		// 			name1 = mname + "/" + goifyName(t.Name())
+		// 			ctx.requireModule(name1)
+		// 		}
+		// 	case ModuleReference:
+		// 		{
+		// 			name1 = mname + "/" + goifyName(t.Name())
+		// 			ctx.requireModule(name1)
+		// 		}
+		// 	case ValueReference:
+		// 		{
+		// 			name1 = mname + "/" + goifyName(t.Name())
+		// 			ctx.requireModule(name1)
+		// 		}
+		// 	}
+		// }
+
+	}
+
 	importDecls := make([]goast.Decl, 0)
 	for _, moduleName := range ctx.requiredModules {
 		modulePath := &goast.BasicLit{Kind: gotoken.STRING, Value: fmt.Sprintf("\"%v\"", moduleName)}
 		specs := []goast.Spec{&goast.ImportSpec{Path: modulePath}}
 		importDecls = append(importDecls, &goast.GenDecl{Tok: gotoken.IMPORT, Specs: specs})
 	}
+
 	ast.Decls = append(importDecls, ast.Decls...)
 	return goprint.Fprint(writer, gotoken.NewFileSet(), ast)
 }
+func IsUpper(s string) bool {
+	for _, r := range s {
+		if !unicode.IsUpper(r) && unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
+}
 
+func IsLower(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLower(r) && unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
+}
 func goifyName(name string) string {
-	return strings.Title(strings.Replace(name, "-", "_", -1))
+	if name == "BigInt" {
+		return "int64"
+	} else if name == "StringStore" {
+		return "string"
+	}
+	caser := cases.Title(language.English, cases.NoLower)
+	//when all letter is upper
+	tmp := strings.ReplaceAll(name, "-", "")
+	if IsUpper(tmp) {
+		return caser.String(strings.Replace(name, "-", "_", -1))
+	}
+
+	name1 := strings.ReplaceAll(name, "-", "_")
+	names := strings.Split(name1, "_")
+
+	for i := 0; i < len(names); i++ {
+		names[i] = caser.String(names[i])
+	}
+	return strings.Join(names, "")
+	// return strings.Title(strings.Replace(name, "-", "_", -1))
 }
 
 /** generateDeclarations based on ModuleBody of module
@@ -117,24 +183,76 @@ func (ctx *moduleContext) generateDeclarations(module ModuleDefinition) []goast.
 		switch a := assignment.(type) {
 		case TypeAssignment:
 			decls = append(decls, ctx.generateTypeDecl(a.TypeReference, a.Type))
+		case ValueAssignment:
+			// decls = append(decls, ctx.generateValueCommentDecl(a.ValueReference, a.Type, a.Value))
+			decls = append(decls, ctx.generateValueDecl(a.ValueReference, a.Type, a.Value))
+			// fmt.Println("not support yet")
 		}
 	}
+
 	return decls
 }
 
+// func (ctx *moduleContext) generateValueCommentDecl(reference ValueReference, typeDescr Type, value Value) goast.Decl {
+// 	return &goast.GenDecl{
+// 		Tok: gotoken.COMMENT,
+// 		Specs: []goast.Spec{
+// 			&goast.ValueSpec{
+// 				Comment: ctx.commentFromType(typeDescr, reference.Name()),
+// 			},
+// 		},
+// 	}
+// }
+func (ctx *moduleContext) generateValueDecl(reference ValueReference, typeDescr Type, value Value) goast.Decl {
+
+	names, values := ctx.generateValueBody(value)
+	return &goast.GenDecl{
+		Tok: gotoken.CONST,
+		Specs: []goast.Spec{
+			&goast.ValueSpec{
+				Names:   names,
+				Type:    ctx.generateTypeBody(typeDescr, true),
+				Comment: ctx.commentFromType(typeDescr, reference.Name()),
+				Values:  values,
+			},
+		},
+	}
+}
 func (ctx *moduleContext) generateTypeDecl(reference TypeReference, typeDescr Type) goast.Decl {
 	return &goast.GenDecl{
 		Tok: gotoken.TYPE,
 		Specs: []goast.Spec{
 			&goast.TypeSpec{
-				Name: goast.NewIdent(goifyName(reference.Name())),
-				Type: ctx.generateTypeBody(typeDescr),
+				Name:    goast.NewIdent(goifyName(reference.Name())),
+				Type:    ctx.generateTypeBody(typeDescr, true),
+				Comment: ctx.commentFromType(typeDescr, reference.Name()),
 			},
 		},
 	}
 }
-
-func (ctx *moduleContext) generateTypeBody(typeDescr Type) goast.Expr {
+func (ctx *moduleContext) generateValueBody(value Value) ([]*goast.Ident, []goast.Expr) {
+	names := make([]*goast.Ident, 0)
+	exprs := make([]goast.Expr, 0)
+	switch tt := value.(type) {
+	case ObjectIdentifierValue:
+		{
+			for _, v := range tt {
+				switch vl := v.(type) {
+				case ObjectIdElement:
+					{
+						names = append(names, goast.NewIdent(goifyName(vl.Name)))
+						exprs = append(exprs, goast.NewIdent(fmt.Sprint(vl.Id)))
+					}
+				}
+			}
+		}
+	}
+	if len(exprs) > 0 {
+		return names, exprs
+	}
+	return nil, nil
+}
+func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast.Expr {
 	switch t := typeDescr.(type) {
 	case BooleanType:
 		return goast.NewIdent("bool")
@@ -146,6 +264,14 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type) goast.Expr {
 		return goast.NewIdent("float64")
 	case OctetStringType:
 		return &goast.ArrayType{Elt: goast.NewIdent("byte")}
+	case ChoiceType:
+		fields := &goast.FieldList{}
+		for _, f := range t.AlternativeTypeList {
+			fields.List = append(fields.List, ctx.generateStructField(NamedComponentType{NamedType: f}))
+		}
+		return &goast.StructType{
+			Fields: fields,
+		}
 	case SequenceType:
 		fields := &goast.FieldList{}
 		for _, field := range t.Components {
@@ -158,26 +284,61 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type) goast.Expr {
 		return &goast.StructType{
 			Fields: fields,
 		}
+	case SetType:
+		fields := &goast.FieldList{}
+		for _, field := range t.Components {
+			switch f := field.(type) {
+			case NamedComponentType:
+				fields.List = append(fields.List, ctx.generateStructField(f))
+			case ComponentsOfComponentType: // TODO
+			}
+		}
+		return &goast.StructType{
+			Fields: fields,
+		}
+	case SetOfType:
+		return &goast.ArrayType{Elt: ctx.generateTypeBody(t.Type, true)}
 	case SequenceOfType:
-		return &goast.ArrayType{Elt: ctx.generateTypeBody(t.Type)}
+		return &goast.ArrayType{Elt: ctx.generateTypeBody(t.Type, true)}
 	case TaggedType: // TODO should put tags in go code?
-		return ctx.generateTypeBody(t.Type)
+		return ctx.generateTypeBody(t.Type, false)
 	case ConstraintedType: // TODO should generate checking code?
-		return ctx.generateTypeBody(t.Type)
+		return ctx.generateTypeBody(t.Type, false)
 	case TypeReference: // TODO should useful types be separate type by itself?
+
+		prefix := "*"
+		if noStar {
+			prefix = ""
+		}
 		nameAndType := ctx.resolveTypeReference(t)
 		if nameAndType != nil {
 			specialCase := ctx.generateSpecialCase(*nameAndType)
 			if specialCase != nil {
 				return specialCase
 			}
+			if nameAndType.Module != "" {
+				return goast.NewIdent(prefix + goifyName(nameAndType.Module) + "." + goifyName(t.Name()))
+			}
 		}
-		return goast.NewIdent(goifyName(t.Name()))
+
+		return goast.NewIdent(prefix + goifyName(t.Name()))
 	case RestrictedStringType: // TODO should generate checking code?
 		return goast.NewIdent("string")
 	case BitStringType:
 		ctx.requireModule("encoding/asn1")
 		return goast.NewIdent("asn1.BitString")
+	case EnumeratedType:
+		return goast.NewIdent("string") //在json文件中是int,虽然是int类型，但是在xml文件里是文本
+	case IntegerEnumType:
+		return goast.NewIdent("int") //在json文件中是int,虽然是int类型，但是在xml文件里是文本
+	case StringType:
+		return goast.NewIdent("string")
+	case BigInt:
+		return goast.NewIdent("int64")
+	case NullType:
+		return goast.NewIdent("interface{}")
+	case ObjectIdentifierType:
+		return goast.NewIdent("int")
 	default:
 		// NullType
 		// ObjectIdentifierType
@@ -190,12 +351,53 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type) goast.Expr {
 
 func (ctx *moduleContext) generateStructField(f NamedComponentType) *goast.Field {
 	return &goast.Field{
-		Names: append(make([]*goast.Ident, 0), goast.NewIdent(goifyName(f.NamedType.Identifier.Name()))),
-		Type:  ctx.generateTypeBody(f.NamedType.Type),
-		Tag:   ctx.asn1TagFromType(f),
+		Names:   append(make([]*goast.Ident, 0), goast.NewIdent(goifyName(f.NamedType.Identifier.Name()))),
+		Type:    ctx.generateTypeBody(f.NamedType.Type, false),
+		Tag:     ctx.asn1TagFromType(f),
+		Comment: ctx.commentFromComponentType(f),
 	}
 }
+func (ctx *moduleContext) commentFromComponentType(nt NamedComponentType) *goast.CommentGroup {
+	t := nt.NamedType.Type
+	return ctx.commentFromType(t, nt.NamedType.Identifier.Name())
+}
 
+func (ctx *moduleContext) commentFromType(t1 Type, typeName string) *goast.CommentGroup {
+
+	switch tt := t1.(type) {
+	case ObjectIdentifierType:
+		{
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("/*%s,OID*/", goifyName(typeName))})}
+		}
+	case NullType:
+		{
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("//%s,NullType\n", goifyName(typeName))})}
+		}
+	case ChoiceType:
+		{
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("//%s,ChoiceOption\n", goifyName(typeName))})}
+		}
+	case IntegerEnumType:
+		{
+			comments := make([]string, 0)
+			for _, enum := range tt.Enums {
+				comments = append(comments, fmt.Sprintf("%s(%d)", enum.Name, enum.Index))
+			}
+			commentline := strings.Join(comments, ",")
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("//%s,IntegerEnum:%s\n", goifyName(typeName), commentline)})}
+		}
+	case EnumeratedType:
+		{
+			comments := make([]string, 0)
+			for _, enum := range tt.Enums {
+				comments = append(comments, fmt.Sprintf("%s(%d)", enum.Name, enum.Index))
+			}
+			commentline := strings.Join(comments, ",")
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("//%s,EnumList:%s\n", goifyName(typeName), commentline)})}
+		}
+	}
+	return nil
+}
 func (ctx *moduleContext) asn1TagFromType(nt NamedComponentType) *goast.BasicLit {
 	t := nt.NamedType.Type
 	components := make([]string, 0)
@@ -203,8 +405,10 @@ func (ctx *moduleContext) asn1TagFromType(nt NamedComponentType) *goast.BasicLit
 		components = append(components, "optional")
 	}
 	if nt.Default != nil {
-		if defaultNumber, ok := (*nt.Default).(Number); ok {
+		if defaultNumber, ok := (nt.Default).(Number); ok {
 			components = append(components, fmt.Sprintf("default:%v", defaultNumber.IntValue()))
+		} else if defaultString, ok := (nt.Default).(String); ok {
+			components = append(components, fmt.Sprintf("default:%s", defaultString.StringValue()))
 		}
 	}
 	// unwrap type
@@ -231,8 +435,12 @@ unwrap:
 			break unwrap
 		}
 	}
+	isReference := false
+	isArray := false
 	// add type-specific tags
 	switch tt := t.(type) {
+	case OctetStringType, SetOfType, SequenceOfType:
+		isArray = true
 	case RestrictedStringType:
 		switch tt.LexType {
 		case IA5String:
@@ -243,6 +451,7 @@ unwrap:
 			components = append(components, "printable")
 		}
 	case TypeReference:
+		isReference = true
 		switch ctx.unwrapToLeafType(tt).TypeReference.Name() {
 		case GeneralizedTimeName:
 			components = append(components, "generalized")
@@ -252,13 +461,26 @@ unwrap:
 		// TODO set          causes a SET, rather than a SEQUENCE type to be expected
 		// TODO omitempty    causes empty slices to be skipped
 	}
+	//json格式把-转换成_
+	id := nt.NamedType.Identifier.Name()
+	json_field := strings.ReplaceAll(id, "-", "_")
+	xmltag := ""
+	if nt.IsOptional || isReference || isArray {
+		xmltag = fmt.Sprintf("xml:\"%s\" json:\"%s,omitempty\"", id, json_field)
+	} else {
+		xmltag = fmt.Sprintf("xml:\"%s\" json:\"%s\"", id, json_field)
+	}
 	if len(components) > 0 {
 		return &goast.BasicLit{
-			Value: fmt.Sprintf("`asn1:\"%s\"`", strings.Join(components, ",")),
+			Value: fmt.Sprintf("`%s asn1:\"%s\"`", xmltag, strings.Join(components, ",")),
 			Kind:  gotoken.STRING,
 		}
 	} else {
-		return nil
+		return &goast.BasicLit{
+			Value: fmt.Sprintf("`%s`", xmltag),
+			Kind:  gotoken.STRING,
+		}
+		// return nil
 	}
 }
 
@@ -287,7 +509,8 @@ func (ctx *moduleContext) resolveTypeReference(reference TypeReference) *TypeAss
 	if unwrapped.Type != nil {
 		return &unwrapped
 	} else if tt := ctx.lookupUsefulType(unwrapped.TypeReference); tt != nil {
-		return &TypeAssignment{unwrapped.TypeReference, tt}
+		module := ctx.lookupUsefulTypeModule(unwrapped.TypeReference)
+		return &TypeAssignment{unwrapped.TypeReference, tt, module}
 	} else {
 		ctx.appendError(errors.New(fmt.Sprintf("Can not resolve TypeReference %v", reference.Name())))
 		return nil
@@ -301,7 +524,13 @@ func (ctx *moduleContext) lookupUsefulType(reference TypeReference) Type {
 		return nil
 	}
 }
-
+func (ctx *moduleContext) lookupUsefulTypeModule(reference TypeReference) string {
+	if usefulTypeModule, ok := USEFUL_TYPES_MODULE[reference.Name()]; ok {
+		return usefulTypeModule
+	} else {
+		return ""
+	}
+}
 func (ctx *moduleContext) removeWrapperTypes(t Type) Type {
 	for {
 		switch tt := t.(type) {
@@ -325,5 +554,5 @@ func (ctx *moduleContext) unwrapToLeafType(reference TypeReference) TypeAssignme
 			return *assignment
 		}
 	}
-	return TypeAssignment{reference, nil}
+	return TypeAssignment{reference, nil, ""}
 }

@@ -11,7 +11,7 @@ func testNotFails(t *testing.T, str string) *ModuleDefinition {
 	if err != nil {
 		t.Fatalf("Failed to parse %v\n\nExpected nil error, got %v", str, err.Error())
 	}
-	return def
+	return &def[0]
 }
 
 func TestParseMinimalModule(t *testing.T) {

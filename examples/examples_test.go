@@ -1,7 +1,7 @@
 package examples
 
 import (
-	"github.com/chemikadze/asn1go"
+	"asn1go"
 	"io/ioutil"
 	"testing"
 )
@@ -16,7 +16,7 @@ func testExampleParsing(t *testing.T, filename string) *asn1go.ModuleDefinition 
 	if err != nil {
 		t.Fatalf("Failed to parse %v\n\nExpected nil error, got %v", str, err.Error())
 	}
-	return def
+	return &def[0]
 }
 
 func TestParseKerberos(t *testing.T) {

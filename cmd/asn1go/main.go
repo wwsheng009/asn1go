@@ -1,9 +1,9 @@
 package main
 
 import (
+	"asn1go"
 	"flag"
 	"fmt"
-	"github.com/chemikadze/asn1go"
 	"os"
 )
 
@@ -66,17 +66,21 @@ func main() {
 	flags := parseFlags(os.Args)
 	input, output := openChannels(flags.inputName, flags.outputName)
 
-	module, err := asn1go.ParseStream(input)
+	modules, err := asn1go.ParseStream(input)
 	if err != nil {
 		failWithError(err.Error())
 	}
+
+	asn1go.UpdateTypeList(modules)
 	params := asn1go.GenParams{
 		Package: flags.packageName,
 	}
-	gen := asn1go.NewCodeGenerator(params)
-	err = gen.Generate(*module, output)
-	if err != nil {
-		failWithError(err.Error())
+	for _, module := range modules {
+		gen := asn1go.NewCodeGenerator(params)
+		err = gen.Generate(module, output)
+		if err != nil {
+			failWithError(err.Error())
+		}
 	}
 
 	output.Close()

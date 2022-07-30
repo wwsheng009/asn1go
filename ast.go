@@ -1,5 +1,7 @@
 package asn1go
 
+import "fmt"
+
 type AstNode interface{}
 
 type ModuleDefinition struct {
@@ -116,6 +118,7 @@ func (v ValueAssignment) Reference() Reference {
 type TypeAssignment struct {
 	TypeReference TypeReference
 	Type          Type
+	Module        string
 }
 
 func (v TypeAssignment) Reference() Reference {
@@ -167,12 +170,31 @@ func (ValueReference) IsSymbol() {}
 type ModuleReference string
 
 func (ModuleReference) IsSymbol() {}
+func (id ModuleReference) Name() string {
+	return string(id)
+}
 
 // identifier type
 type Identifier string
 
 func (id Identifier) Name() string {
 	return string(id)
+}
+
+// boolean
+type StringType struct{}
+
+func (StringType) Zero() interface{} {
+	return ""
+}
+
+type String string
+
+func (x String) Type() Type {
+	return StringType{}
+}
+func (x String) StringValue() string {
+	return string(x)
 }
 
 // number lexem, implements Value
@@ -236,6 +258,12 @@ func (IntegerType) Zero() interface{} {
 	return 0
 }
 
+type BigInt struct{}
+
+func (BigInt) Zero() interface{} {
+	return 0
+}
+
 // real
 type RealType struct{}
 
@@ -287,6 +315,49 @@ func (OctetStringType) Zero() interface{} {
 	return make([]byte, 0)
 }
 
+// string enum
+type IntegerEnumType struct {
+	Enums IntegerEnumItemList
+}
+
+func (IntegerEnumType) Zero() interface{} {
+	return make([]int, 0)
+}
+
+type IntegerEnumItemList []IntegerEnumItem
+
+type IntegerEnumItem struct {
+	Name  Identifier
+	Index Value
+}
+
+// string enum
+// number enum
+type EnumeratedType struct {
+	Enums EnumeratedItemList
+}
+
+func (EnumeratedType) Zero() interface{} {
+	return make([]int, 0)
+}
+
+type EnumeratedItemList []EnumeratedItem
+
+type EnumeratedItem struct {
+	Name  Identifier
+	Index Value
+}
+
+// number enum
+
+type SetType struct {
+	Components ComponentTypeList
+}
+
+func (SetType) Zero() interface{} {
+	return nil
+}
+
 ////////////////////////////////////////////////
 // sequence type
 
@@ -309,7 +380,7 @@ type ComponentType interface {
 type NamedComponentType struct {
 	NamedType  NamedType
 	IsOptional bool
-	Default    *Value
+	Default    Value
 }
 
 func (NamedComponentType) IsComponentType() {}
@@ -350,6 +421,14 @@ type SequenceOfType struct {
 }
 
 func (SequenceOfType) Zero() interface{} {
+	return make([]interface{}, 0)
+}
+
+type SetOfType struct {
+	Type Type
+}
+
+func (SetOfType) Zero() interface{} {
 	return make([]interface{}, 0)
 }
 
@@ -555,5 +634,27 @@ var (
 		GeneralizedTimeName: TaggedType{ // [UNIVERSAL 24] IMPLICIT VisibleString
 			Tag:  Tag{Class: CLASS_UNIVERSAL, ClassNumber: Number(24)},
 			Type: RestrictedStringType{VisibleString}},
+		"BigInt":      BigInt{},
+		"StringStore": StringType{},
 	}
+
+	USEFUL_TYPES_MODULE map[string]string = map[string]string{}
 )
+
+func UpdateTypeList(modules []ModuleDefinition) {
+	for _, module := range modules {
+		for _, assignment := range module.ModuleBody.AssignmentList {
+			name := assignment.Reference().Name()
+			find := module.ModuleBody.AssignmentList.GetType(name)
+			if find != nil {
+				USEFUL_TYPES[name] = module.ModuleBody.AssignmentList.GetType(name).Type
+				USEFUL_TYPES_MODULE[name] = module.ModuleIdentifier.Reference
+			} else {
+				value := module.ModuleBody.AssignmentList.GetValue(name)
+				if value != nil {
+					fmt.Printf("not support yet")
+				}
+			}
+		}
+	}
+}

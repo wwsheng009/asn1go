@@ -12,11 +12,11 @@ func init() {
 	yyErrorVerbose = true
 }
 
-func ParseString(str string) (*ModuleDefinition, error) {
+func ParseString(str string) ([]ModuleDefinition, error) {
 	return ParseStream(strings.NewReader(str))
 }
 
-func ParseStream(reader io.Reader) (*ModuleDefinition, error) {
+func ParseStream(reader io.Reader) ([]ModuleDefinition, error) {
 	lex := &MyLexer{}
 	lex.bufReader = bufio.NewReader(reader)
 	yyParse(lex)
@@ -26,7 +26,7 @@ func ParseStream(reader io.Reader) (*ModuleDefinition, error) {
 	return lex.result, nil
 }
 
-func ParseFile(name string) (*ModuleDefinition, error) {
+func ParseFile(name string) ([]ModuleDefinition, error) {
 	file, err := os.Open(name)
 	if err != nil {
 		return nil, err

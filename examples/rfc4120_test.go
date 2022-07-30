@@ -1,9 +1,9 @@
 package examples
 
 import (
+	"asn1go/internal/utils"
 	"encoding/asn1"
 	"fmt"
-	"github.com/chemikadze/asn1go/internal/utils"
 	"testing"
 )
 
@@ -69,19 +69,19 @@ func TestKdcReq(t *testing.T) {
 00a0   11 02 01 10 02 01 17 02 01 19 02 01 1a
 `)
 	expected := AS_REQ{
-		Pvno:     5,
-		Msg_type: 10,
+		Pvno:    5,
+		MsgType: 10,
 		Padata: []PA_DATA{
 			{149, []byte{}},
 		},
-		Req_body: KDC_REQ_BODY{
-			Kdc_options: asn1.BitString{[]byte{0x00, 0x00, 0x00, 0x10}, 32},
-			Cname:       PrincipalName{1, []KerberosString{"chemikadze"}},
-			Realm:       "ATHENA.MIT.EDU",
-			Sname:       PrincipalName{2, []KerberosString{"krbtgt", "ATHENA.MIT.EDU"}},
-			Till:        utils.ParseWiresharkTime("2018-01-03 06:04:07"),
-			Nonce:       1679932297,
-			Etype:       []Int32{18, 17, 16, 23, 25, 26},
+		ReqBody: &KDC_REQ_BODY{
+			KdcOptions: asn1.BitString{[]byte{0x00, 0x00, 0x00, 0x10}, 32},
+			Cname:      &PrincipalName{1, []KerberosString{"chemikadze"}},
+			Realm:      "ATHENA.MIT.EDU",
+			Sname:      &PrincipalName{2, []KerberosString{"krbtgt", "ATHENA.MIT.EDU"}},
+			Till:       utils.ParseWiresharkTime("2018-01-03 06:04:07"),
+			Nonce:      1679932297,
+			Etype:      []Int32{18, 17, 16, 23, 25, 26},
 		},
 	}
 
@@ -104,17 +104,17 @@ func TestKrbError(t *testing.T) {
 00b0   46 4f 55 4e 44
 `)
 	expected := KRB_ERROR{
-		Pvno:       5,
-		Msg_type:   30,
-		Ctime:      utils.ParseWiresharkTime("2023-03-27 15:51:37"),
-		Stime:      utils.ParseWiresharkTime("2018-01-02 06:04:07"),
-		Susec:      297128,
-		Error_code: 6,
-		Crealm:     "ATHENA.MIT.EDU",
-		Cname:      PrincipalName{1, []KerberosString{"chemikadze"}},
-		Realm:      "ATHENA.MIT.EDU",
-		Sname:      PrincipalName{2, []KerberosString{"krbtgt", "ATHENA.MIT.EDU"}},
-		E_text:     "CLIENT_NOT_FOUND",
+		Pvno:      5,
+		MsgType:   30,
+		Ctime:     utils.ParseWiresharkTime("2023-03-27 15:51:37"),
+		Stime:     utils.ParseWiresharkTime("2018-01-02 06:04:07"),
+		Susec:     297128,
+		ErrorCode: 6,
+		Crealm:    "ATHENA.MIT.EDU",
+		Cname:     &PrincipalName{1, []KerberosString{"chemikadze"}},
+		Realm:     "ATHENA.MIT.EDU",
+		Sname:     &PrincipalName{2, []KerberosString{"krbtgt", "ATHENA.MIT.EDU"}},
+		EText:     "CLIENT_NOT_FOUND",
 	}
 
 	messageTest(t, testCase{bytes: msgBytes, value: new(KRB_ERROR), expected: expected})

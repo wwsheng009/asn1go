@@ -1,8 +1,8 @@
 package main
 
 import (
+	"asn1go/internal/utils"
 	"fmt"
-	"github.com/chemikadze/asn1go/internal/utils"
 	"io/ioutil"
 	"os"
 )

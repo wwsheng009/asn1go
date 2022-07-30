@@ -1,12 +1,13 @@
 package asn1go
 
 import (
-	"github.com/chemikadze/asn1go/internal/utils"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 	"text/template"
+
+	"asn1go/internal/utils"
 )
 
 var driverProgramTemplate = `
@@ -167,27 +168,33 @@ func TestKerberosCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	module, err := generateDeclarationsString(*ast)
-	if err != nil {
-		t.Fatal(err.Error())
+	for _, ast := range ast {
+		module, err := generateDeclarationsString(ast)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		err = tryCompileModule(ast.ModuleIdentifier.Reference, module)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
 	}
-	err = tryCompileModule(ast.ModuleIdentifier.Reference, module)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+
 }
 
 func TestKerberosRuns(t *testing.T) {
-	ast, err := ParseFile("examples/rfc4120.asn1")
+	asts, err := ParseFile("examples/rfc4120.asn1")
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	module, err := generateDeclarationsString(*ast)
-	if err != nil {
-		t.Fatal(err.Error())
+	for _, ast := range asts {
+		module, err := generateDeclarationsString(ast)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		err = dryrunModule(ast.ModuleIdentifier.Reference, module, ast, []string{"KerberosTime"})
+		if err != nil {
+			t.Fatal(err.Error())
+		}
 	}
-	err = dryrunModule(ast.ModuleIdentifier.Reference, module, *ast, []string{"KerberosTime"})
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+
 }

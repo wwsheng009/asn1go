@@ -45,11 +45,11 @@ func TestDeclPrimitiveTypesSyntax(t *testing.T) {
 		ModuleIdentifier: ModuleIdentifier{Reference: "My-ASN1-ModuleName"},
 		ModuleBody: ModuleBody{
 			AssignmentList: AssignmentList{
-				TypeAssignment{TypeReference("MyBool"), BooleanType{}},
-				TypeAssignment{TypeReference("MyInt"), IntegerType{}},
-				TypeAssignment{TypeReference("MyString"), CharacterStringType{}},
-				TypeAssignment{TypeReference("MyOctetString"), OctetStringType{}},
-				TypeAssignment{TypeReference("MyReal"), RealType{}},
+				TypeAssignment{TypeReference("MyBool"), BooleanType{}, ""},
+				TypeAssignment{TypeReference("MyInt"), IntegerType{}, ""},
+				TypeAssignment{TypeReference("MyString"), CharacterStringType{}, ""},
+				TypeAssignment{TypeReference("MyOctetString"), OctetStringType{}, ""},
+				TypeAssignment{TypeReference("MyReal"), RealType{}, ""},
 			},
 		},
 	}
@@ -86,7 +86,7 @@ func TestDeclSequenceTypeSyntax(t *testing.T) {
 					}},
 				}},
 			}},
-		}}},
+		}}, ""},
 	})
 	expected := `package My_ASN1_ModuleName
 
@@ -108,13 +108,13 @@ type MySequence struct {
 
 func TestDeclSequenceOFTypeSyntax(t *testing.T) {
 	m := testModule(AssignmentList{
-		TypeAssignment{TypeReference("MySequenceOfInt"), SequenceOfType{IntegerType{}}},
+		TypeAssignment{TypeReference("MySequenceOfInt"), SequenceOfType{IntegerType{}}, ""},
 		TypeAssignment{TypeReference("MySequenceOfSequence"), SequenceOfType{SequenceType{Components: ComponentTypeList{
 			NamedComponentType{NamedType: NamedType{
 				Identifier: Identifier("myIntField"),
 				Type:       IntegerType{},
 			}}},
-		}}},
+		}}, ""},
 	})
 	expected := `package My_ASN1_ModuleName
 
@@ -139,7 +139,7 @@ func TestTags(t *testing.T) {
 				Identifier: Identifier("myStringField"),
 				Type:       RestrictedStringType{IA5String},
 			}},
-		}}},
+		}}, ""},
 	})
 	expected := `package My_ASN1_ModuleName
 
@@ -158,13 +158,13 @@ type MySequence struct {
 
 func TestTime(t *testing.T) {
 	m := testModule(AssignmentList{
-		TypeAssignment{TypeReference("MyTimeType"), TypeReference("GeneralizedTime")},
+		TypeAssignment{TypeReference("MyTimeType"), TypeReference("GeneralizedTime"), ""},
 		TypeAssignment{TypeReference("MySequence"), SequenceType{Components: ComponentTypeList{
 			NamedComponentType{NamedType: NamedType{
 				Identifier: Identifier("myTimeField"),
 				Type:       TypeReference("MyTimeType"),
 			}},
-		}}},
+		}}, ""},
 	})
 	expected := `package My_ASN1_ModuleName
 
@@ -199,8 +199,8 @@ func TestBitString(t *testing.T) {
 				},
 				}}},
 			}},
-		}},
-		TypeAssignment{TypeReference("MyNestedBitStringType"), TypeReference("MyBitStringType")},
+		}, ""},
+		TypeAssignment{TypeReference("MyNestedBitStringType"), TypeReference("MyBitStringType"), ""},
 		TypeAssignment{TypeReference("MySequence"), SequenceType{Components: ComponentTypeList{
 			NamedComponentType{NamedType: NamedType{
 				Identifier: Identifier("myNestedBitStringField"),
@@ -214,7 +214,7 @@ func TestBitString(t *testing.T) {
 				Identifier: Identifier("bitStringField"),
 				Type:       BitStringType{},
 			}},
-		}}},
+		}}, ""},
 	})
 	expected := `package My_ASN1_ModuleName
 

@@ -9,7 +9,8 @@ generate:
 .PHONY: generate
 
 deps:
-	go get golang.org/x/tools/cmd/goyacc
+	go install golang.org/x/tools/cmd/goyacc@latest
+	# go get golang.org/x/tools/cmd/goyacc
 .PHONY: deps
 
 yacc: y.go

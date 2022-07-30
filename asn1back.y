@@ -38,7 +38,6 @@ import (
     ConstraintSpec ConstraintSpec
     ElementSetSpec ElementSetSpec
     Unions Unions
-    ModuleDefinition ModuleDefinition
     Intersections Intersections
     IntersectionElements IntersectionElements
     Exclusions Exclusions
@@ -48,18 +47,10 @@ import (
     NamedType NamedType
     ComponentType ComponentType
     ComponentTypeList ComponentTypeList
-    IntegerEnumType IntegerEnumType
-    IntegerEnumItemList IntegerEnumItemList
-    IntegerEnumItem IntegerEnumItem
-    EnumeratedType EnumeratedType
-    EnumeratedItemList EnumeratedItemList
-    EnumeratedItem EnumeratedItem
     SequenceType SequenceType
-    SetType SetType
     Tag Tag
     Class int
     SequenceOfType SequenceOfType
-    SetOfType SetOfType
     NamedBitList []NamedBit
     NamedBit NamedBit
     Imports []SymbolsFromModule
@@ -272,16 +263,8 @@ import (
 %type <Value> LowerEndValue UpperEndValue
 %type <Type> CharacterStringType RestrictedCharacterStringType UnrestrictedCharacterStringType
 %type <Type> DefinedType ReferencedType
-%type <Type> EnumeratedType
-%type <EnumeratedItemList> EnumeratedItemList
-%type <EnumeratedItem> EnumeratedItem
-%type <Type> IntegerEnumType
-%type <IntegerEnumItemList> IntegerEnumItemList
-%type <IntegerEnumItem> IntegerEnumItem
 %type <Type> SequenceType
-%type <Type> SetType
 %type <Type> SequenceOfType
-%type <Type> SetOfType
 %type <ComponentType> ComponentType
 %type <ComponentTypeList> ComponentTypeList
 %type <ComponentTypeList> RootComponentTypeList
@@ -311,7 +294,7 @@ import (
 %type <ExtensionAdditionAlternative> ExtensionAdditionAlternative
 %type <ExtensionAdditionAlternativesList> ExtensionAdditionAlternatives
 %type <ExtensionAdditionAlternativesList> ExtensionAdditionAlternativesList
-%type <ModuleDefinition> ModuleDefinition
+
 
 //
 // end declarations
@@ -326,11 +309,6 @@ import (
 // Code inside the grammar actions may refer to the variable yylex,
 // which holds the yyLexer passed to yyParse.
 
-ModuleDefinitionList : ModuleDefinition  { yylex.(*MyLexer).result = append(make([]ModuleDefinition,0),$1) }
-                  | ModuleDefinitionList ModuleDefinition  { yylex.(*MyLexer).result = append(yylex.(*MyLexer).result, $2) }
-;
-
-
 ModuleDefinition :
     ModuleIdentifier
     DEFINITIONS
@@ -340,9 +318,7 @@ ModuleDefinition :
     BEGIN
     ModuleBody
     END
-    { $$ = ModuleDefinition{ModuleIdentifier: $1, TagDefault: $3, ExtensibilityImplied: $4, ModuleBody: $7} }
-
-    // { yylex.(*MyLexer).result = &ModuleDefinition{ModuleIdentifier: $1, TagDefault: $3, ExtensibilityImplied: $4, ModuleBody: $7} }
+    { yylex.(*MyLexer).result = &ModuleDefinition{ModuleIdentifier: $1, TagDefault: $3, ExtensibilityImplied: $4, ModuleBody: $7} }
 ;
 
 typereference: TYPEORMODULEREFERENCE  { $$ = TypeReference($1) }
@@ -479,7 +455,7 @@ DefinedValue : "t" "o" "d" "o"  { $$ = DefinedValue{} }
 
 // 15.1
 
-TypeAssignment : typereference ASSIGNMENT Type  { $$ = TypeAssignment{$1, $3 , ""} }
+TypeAssignment : typereference ASSIGNMENT Type  { $$ = TypeAssignment{$1, $3} }
 ;
 
 ValueAssignment : valuereference Type ASSIGNMENT Value  { $$ = ValueAssignment{$1, $2, $4} }
@@ -499,8 +475,7 @@ BuiltinType : BitStringType
             | CharacterStringType
             | ChoiceType
 //            | EmbeddedPDVType
-            | IntegerEnumType
-            | EnumeratedType
+//            | EnumeratedType
 //            | ExternalType
 //            | InstanceOfType
             | IntegerType
@@ -512,8 +487,8 @@ BuiltinType : BitStringType
 //            | RelativeOIDType
             | SequenceType
             | SequenceOfType
-            | SetType
-            | SetOfType
+//            | SetType
+//            | SetOfType
             | TaggedType
 ;
 
@@ -536,9 +511,6 @@ NamedType : identifier Type  { $$ = NamedType{Identifier: Identifier($1), Type: 
 Value : BuiltinValue
 //      | ReferencedValue
 //      | ObjectClassFieldValue
-        | QUOTATION_MARK TYPEORMODULEREFERENCE QUOTATION_MARK  { $$ = String($2) }
-        | QUOTATION_MARK VALUEIDENTIFIER QUOTATION_MARK  { $$ = String($2) }
-        | QUOTATION_MARK RealValue QUOTATION_MARK  { $$ = $2 }
 ;
 
 // 16.8
@@ -652,34 +624,6 @@ OctetStringType : OCTET STRING  { $$ = OctetStringType{} }
 
 NullType : NULL  { $$ = NullType{} }
 ;
-// INTEGER { $$ = IntegerEnumType{} }
-IntegerEnumType : INTEGER OPEN_CURLY CLOSE_CURLY { $$ = IntegerEnumType{} }
-                | INTEGER OPEN_CURLY IntegerEnumItemList CLOSE_CURLY  { $$ = IntegerEnumType{Enums: $3} }
-;
-IntegerEnumItemList : IntegerEnumItem  { $$ = append(make(IntegerEnumItemList, 0), $1) }
-                  | IntegerEnumItemList COMMA IntegerEnumItem  { $$ = append($1, $3) }
-;
-
-IntegerEnumItem : identifier OPEN_ROUND number CLOSE_ROUND  { $$ = IntegerEnumItem{Name: Identifier($1),Index: $3} }
-;
-
-
-// ENUMERATED { $$ = EnumeratedType{} }
-EnumeratedType : ENUMERATED OPEN_CURLY CLOSE_CURLY { $$ = EnumeratedType{} }
-                | ENUMERATED OPEN_CURLY EnumeratedItemList CLOSE_CURLY  { $$ = EnumeratedType{Enums: $3} }
-;
-EnumeratedItemList : EnumeratedItem  { $$ = append(make(EnumeratedItemList, 0), $1) }
-                  | EnumeratedItemList COMMA EnumeratedItem  { $$ = append($1, $3) }
-;
-
-EnumeratedItem : identifier OPEN_ROUND number CLOSE_ROUND  { $$ = EnumeratedItem{Name: Identifier($1),Index: $3} }
-;
-
-
-SetType : SET OPEN_CURLY CLOSE_CURLY  { $$ = SetType{} }
-             | SET OPEN_CURLY ExtensionAndException OptionalExtensionMarker CLOSE_CURLY  { $$ = SetType{} }
-             | SET OPEN_CURLY ComponentTypeLists CLOSE_CURLY  { $$ = SetType{Components: $3} }
-;
 
 // 24.1
 
@@ -687,7 +631,6 @@ SequenceType : SEQUENCE OPEN_CURLY CLOSE_CURLY  { $$ = SequenceType{} }
              | SEQUENCE OPEN_CURLY ExtensionAndException OptionalExtensionMarker CLOSE_CURLY  { $$ = SequenceType{} }
              | SEQUENCE OPEN_CURLY ComponentTypeLists CLOSE_CURLY  { $$ = SequenceType{Components: $3} }
 ;
-
 
 ExtensionAndException : ELLIPSIS
                       | ELLIPSIS ExceptionSpec
@@ -734,7 +677,7 @@ ComponentTypeList : ComponentType  { $$ = append(make(ComponentTypeList, 0), $1)
 
 ComponentType : NamedType  { $$ = NamedComponentType{NamedType: $1} }
               | NamedType OPTIONAL  { $$ = NamedComponentType{NamedType: $1, IsOptional: true} }
-              | NamedType DEFAULT Value  { $$ = NamedComponentType{NamedType: $1, Default: $3} }
+              | NamedType DEFAULT Value  { $$ = NamedComponentType{NamedType: $1, Default: &$3} }
               | COMPONENTS OF Type  { $$ = ComponentsOfComponentType{Type: $3} }
 ;
 
@@ -796,10 +739,6 @@ Class : UNIVERSAL  { $$ = CLASS_UNIVERSAL }
 
 SequenceOfType : SEQUENCE OF Type  { $$ = SequenceOfType{$3} }
                | SEQUENCE OF NamedType  { $$ = SequenceOfType{$3} }
-;
-
-SetOfType : SET OF Type  { $$ = SetOfType{$3} }
-               | SET OF NamedType  { $$ = SetOfType{$3} }
 ;
 
 // 31.1

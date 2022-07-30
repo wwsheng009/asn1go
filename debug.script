@@ -1,0 +1,11 @@
+
+
+在以下代码上面增加调试代码
+		/* error ... attempt to resume parsing */
+		switch Errflag {
+
+		for i := 0; i < 6; i++ {
+			
+			next,_ := yylex.(*MyLexer).bufReader.ReadString('\n')
+			println("debug:",next)
+		}

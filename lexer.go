@@ -99,11 +99,12 @@ var (
 type MyLexer struct {
 	bufReader     *bufio.Reader
 	err           error
-	result        *ModuleDefinition
+	result        []ModuleDefinition
 	lastWasNumber bool
 }
 
 func (lex *MyLexer) Lex(lval *yySymType) int {
+
 	lastWasNumber := lex.lastWasNumber
 	lex.lastWasNumber = false
 	for {
@@ -120,10 +121,16 @@ func (lex *MyLexer) Lex(lval *yySymType) int {
 		if isWhitespace(r) {
 			lastWasNumber = false
 			continue
-		} else if r == '-' && lex.peekRune() == '-' {
-			lex.skipLineComment()
-			lastWasNumber = false
-			continue
+		} else if r == '-' {
+			r := lex.peekRune()
+			if r == '-' {
+				lex.skipLineComment()
+				lastWasNumber = false
+				continue
+			} else if isNewline(r) {
+				lastWasNumber = false
+				continue
+			}
 		} else if r == '/' && lex.peekRune() == '*' {
 			lex.skipBlockComment()
 			lastWasNumber = false
@@ -147,6 +154,7 @@ func (lex *MyLexer) Lex(lval *yySymType) int {
 					return code
 				} else {
 					lval.name = content
+					fmt.Println("TYPEORMODULEREFERENCE:" + lval.name)
 					return TYPEORMODULEREFERENCE
 				}
 			} else {
