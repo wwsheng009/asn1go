@@ -49,12 +49,15 @@ type moduleContext struct {
 	errors               []error
 	lookupContext        ModuleBody
 	requiredModules      []string
+	comments             []*goast.CommentGroup
 }
 
 func (ctx *moduleContext) appendError(err error) {
 	ctx.errors = append(ctx.errors, err)
 }
-
+func (ctx *moduleContext) appendComment(comment *goast.CommentGroup) {
+	ctx.comments = append(ctx.comments, comment)
+}
 func (ctx *moduleContext) requireModule(module string) {
 	for _, existing := range ctx.requiredModules {
 		if existing == module {
@@ -77,6 +80,7 @@ func (gen declCodeGen) Generate(module ModuleDefinition, writer io.Writer) error
 		extensibilityImplied: module.ExtensibilityImplied,
 		tagDefault:           module.TagDefault,
 		lookupContext:        module.ModuleBody,
+		comments:             make([]*goast.CommentGroup, 0),
 	}
 	moduleName := goast.NewIdent(goifyName(module.ModuleIdentifier.Reference))
 	if len(gen.Params.Package) > 0 {
@@ -127,6 +131,7 @@ func (gen declCodeGen) Generate(module ModuleDefinition, writer io.Writer) error
 	}
 
 	ast.Decls = append(importDecls, ast.Decls...)
+	ast.Comments = append(ast.Comments, ctx.comments...)
 	return goprint.Fprint(writer, gotoken.NewFileSet(), ast)
 }
 func IsUpper(s string) bool {
@@ -210,25 +215,39 @@ func (ctx *moduleContext) generateValueDecl(reference ValueReference, typeDescr 
 		Tok: gotoken.CONST,
 		Specs: []goast.Spec{
 			&goast.ValueSpec{
-				Names:   names,
-				Type:    ctx.generateTypeBody(typeDescr, true),
-				Comment: ctx.commentFromType(typeDescr, reference.Name()),
-				Values:  values,
+				Names:  names,
+				Type:   ctx.generateTypeBody(typeDescr, true),
+				Doc:    ctx.commentFromType(typeDescr, reference.Name(), nil),
+				Values: values,
 			},
 		},
 	}
 }
 func (ctx *moduleContext) generateTypeDecl(reference TypeReference, typeDescr Type) goast.Decl {
-	return &goast.GenDecl{
+	name := goast.NewIdent(goifyName(reference.Name()))
+	// var pos token.Pos
+	var type1 goast.Expr
+	comment_group := ctx.commentFromType(typeDescr, reference.Name(), nil)
+	// if comment_group != nil {
+	// 	pos = comment_group.End()
+	// 	// ctx.appendComment(comment_group)
+	// }
+	type1 = ctx.generateTypeBody(typeDescr, true)
+	decl := goast.GenDecl{
 		Tok: gotoken.TYPE,
+
 		Specs: []goast.Spec{
 			&goast.TypeSpec{
-				Name:    goast.NewIdent(goifyName(reference.Name())),
-				Type:    ctx.generateTypeBody(typeDescr, true),
-				Comment: ctx.commentFromType(typeDescr, reference.Name()),
+				Name:    name,          //goast.NewIdent(goifyName(reference.Name())),
+				Type:    type1,         //ctx.generateTypeBody(typeDescr, true),
+				Comment: comment_group, //ctx.commentFromType(typeDescr, reference.Name(), nil),
 			},
 		},
 	}
+	// if comment_group != nil {
+	// 	decl.TokPos = comment_group.End() + 1
+	// }
+	return &decl
 }
 func (ctx *moduleContext) generateValueBody(value Value) ([]*goast.Ident, []goast.Expr) {
 	names := make([]*goast.Ident, 0)
@@ -267,7 +286,7 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 	case ChoiceType:
 		fields := &goast.FieldList{}
 		for _, f := range t.AlternativeTypeList {
-			fields.List = append(fields.List, ctx.generateStructField(NamedComponentType{NamedType: f}))
+			fields.List = append(fields.List, ctx.generateStructField(NamedComponentType{NamedType: f}, &typeDescr))
 		}
 		return &goast.StructType{
 			Fields: fields,
@@ -277,7 +296,7 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 		for _, field := range t.Components {
 			switch f := field.(type) {
 			case NamedComponentType:
-				fields.List = append(fields.List, ctx.generateStructField(f))
+				fields.List = append(fields.List, ctx.generateStructField(f, &typeDescr))
 			case ComponentsOfComponentType: // TODO
 			}
 		}
@@ -289,11 +308,12 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 		for _, field := range t.Components {
 			switch f := field.(type) {
 			case NamedComponentType:
-				fields.List = append(fields.List, ctx.generateStructField(f))
+				fields.List = append(fields.List, ctx.generateStructField(f, &typeDescr))
 			case ComponentsOfComponentType: // TODO
 			}
 		}
 		return &goast.StructType{
+			// Struct: pos + 1,
 			Fields: fields,
 		}
 	case SetOfType:
@@ -301,18 +321,42 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 	case SequenceOfType:
 		return &goast.ArrayType{Elt: ctx.generateTypeBody(t.Type, true)}
 	case TaggedType: // TODO should put tags in go code?
-		return ctx.generateTypeBody(t.Type, false)
+		return ctx.generateTypeBody(t.Type, noStar)
 	case ConstraintedType: // TODO should generate checking code?
-		return ctx.generateTypeBody(t.Type, false)
+		return ctx.generateTypeBody(t.Type, noStar)
 	case TypeReference: // TODO should useful types be separate type by itself?
 
 		prefix := "*"
 		if noStar {
 			prefix = ""
 		}
+		// if t.Name() == "KDC-REP" {
+		// 	prefix = ""
+		// }
 		nameAndType := ctx.resolveTypeReference(t)
+
 		if nameAndType != nil {
-			specialCase := ctx.generateSpecialCase(*nameAndType)
+			switch nameAndType.Type.(type) {
+			case RestrictedStringType, ConstraintedType, SequenceOfType, SetOfType:
+				{
+					prefix = ""
+				}
+			default:
+				if tt := ctx.lookupUsefulType(nameAndType.TypeReference); tt != nil {
+					switch tt.(type) {
+					case RestrictedStringType:
+						{
+							prefix = ""
+						}
+					}
+				}
+			}
+		}
+		if prefix == "*" && IsPrimvateType(nameAndType.TypeReference.Name()) {
+			prefix = ""
+		}
+		if nameAndType != nil {
+			specialCase := ctx.generateSpecialCase(*nameAndType, prefix)
 			if specialCase != nil {
 				return specialCase
 			}
@@ -321,6 +365,12 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 			}
 		}
 
+		if IsPrimvateType(t.Name()) {
+			prefix = ""
+		}
+		// if prefix == "*" {
+		// 	fmt.Println("has star")
+		// }
 		return goast.NewIdent(prefix + goifyName(t.Name()))
 	case RestrictedStringType: // TODO should generate checking code?
 		return goast.NewIdent("string")
@@ -349,25 +399,65 @@ func (ctx *moduleContext) generateTypeBody(typeDescr Type, noStar Boolean) goast
 	}
 }
 
-func (ctx *moduleContext) generateStructField(f NamedComponentType) *goast.Field {
+func IsPrimvateType(typeName string) Boolean {
+
+	switch typeName {
+	case
+		"int8",    //8-bit signed integer
+		"int16",   //16-bit signed integer
+		"int32",   //32-bit signed integer
+		"int64",   //64-bit signed integer
+		"uint8",   //8-bit unsigned integer
+		"uint16",  //16-bit unsigned integer
+		"uint32",  //32-bit unsigned integer
+		"uint64",  //64-bit unsigned integer
+		"int",     //Both int and uint contain same size, either 32 or 64 bit.
+		"uint",    //Both int and uint contain same size, either 32 or 64 bit.
+		"rune",    //It is a synonym of int32 and also represent Unicode code points.
+		"byte",    //It is a synonym of uint8.
+		"uintptr", //It is an unsigned integer type. Its width is not defined, but its can hold all the bits of a pointer value.
+		"string",
+		"interface{}",
+		"[]int8",
+		"[]int16",
+		"[]int32",
+		"[]int64",
+		"[]uint8",
+		"[]uint16",
+		"[]uint32",
+		"[]uint64",
+		"[]int",
+		"[]uint",
+		"[]rune",
+		"[]byte",
+		"[]uintptr",
+		"[]string",
+		"[]interface{}":
+
+		return true
+	}
+
+	return false
+}
+func (ctx *moduleContext) generateStructField(f NamedComponentType, parent *Type) *goast.Field {
 	return &goast.Field{
 		Names:   append(make([]*goast.Ident, 0), goast.NewIdent(goifyName(f.NamedType.Identifier.Name()))),
 		Type:    ctx.generateTypeBody(f.NamedType.Type, false),
-		Tag:     ctx.asn1TagFromType(f),
-		Comment: ctx.commentFromComponentType(f),
+		Tag:     ctx.asn1TagFromType(f, parent),
+		Comment: ctx.commentFromComponentType(f, parent),
 	}
 }
-func (ctx *moduleContext) commentFromComponentType(nt NamedComponentType) *goast.CommentGroup {
+func (ctx *moduleContext) commentFromComponentType(nt NamedComponentType, parent *Type) *goast.CommentGroup {
 	t := nt.NamedType.Type
-	return ctx.commentFromType(t, nt.NamedType.Identifier.Name())
+	return ctx.commentFromType(t, nt.NamedType.Identifier.Name(), parent)
 }
 
-func (ctx *moduleContext) commentFromType(t1 Type, typeName string) *goast.CommentGroup {
+func (ctx *moduleContext) commentFromType(t1 Type, typeName string, parent *Type) *goast.CommentGroup {
 
 	switch tt := t1.(type) {
 	case ObjectIdentifierType:
 		{
-			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("/*%s,OID*/", goifyName(typeName))})}
+			return &goast.CommentGroup{List: append(make([]*goast.Comment, 0), &goast.Comment{Slash: 0, Text: fmt.Sprintf("//%s,OID\n", goifyName(typeName))})}
 		}
 	case NullType:
 		{
@@ -398,7 +488,7 @@ func (ctx *moduleContext) commentFromType(t1 Type, typeName string) *goast.Comme
 	}
 	return nil
 }
-func (ctx *moduleContext) asn1TagFromType(nt NamedComponentType) *goast.BasicLit {
+func (ctx *moduleContext) asn1TagFromType(nt NamedComponentType, parent *Type) *goast.BasicLit {
 	t := nt.NamedType.Type
 	components := make([]string, 0)
 	if nt.IsOptional {
@@ -437,8 +527,14 @@ unwrap:
 	}
 	isReference := false
 	isArray := false
+	isNull := false
+	// isBool := false
 	// add type-specific tags
 	switch tt := t.(type) {
+	// case BooleanType:
+	// 	isBool = true
+	case NullType:
+		isNull = true
 	case OctetStringType, SetOfType, SequenceOfType:
 		isArray = true
 	case RestrictedStringType:
@@ -461,12 +557,23 @@ unwrap:
 		// TODO set          causes a SET, rather than a SEQUENCE type to be expected
 		// TODO omitempty    causes empty slices to be skipped
 	}
+	parentIsChoice := false
+	if parent != nil {
+		switch (*parent).(type) {
+		case ChoiceType:
+			{
+				parentIsChoice = true
+			}
+		}
+	}
 	//json格式把-转换成_
 	id := nt.NamedType.Identifier.Name()
 	json_field := strings.ReplaceAll(id, "-", "_")
 	xmltag := ""
-	if nt.IsOptional || isReference || isArray {
-		xmltag = fmt.Sprintf("xml:\"%s\" json:\"%s,omitempty\"", id, json_field)
+	if isNull {
+		xmltag = "xml:\"-\" json:\"-\""
+	} else if nt.IsOptional || isReference || isArray || parentIsChoice {
+		xmltag = fmt.Sprintf("xml:\"%s,omitempty\" json:\"%s,omitempty\"", id, json_field)
 	} else {
 		xmltag = fmt.Sprintf("xml:\"%s\" json:\"%s\"", id, json_field)
 	}
@@ -484,11 +591,11 @@ unwrap:
 	}
 }
 
-func (ctx *moduleContext) generateSpecialCase(resolved TypeAssignment) goast.Expr {
+func (ctx *moduleContext) generateSpecialCase(resolved TypeAssignment, prefix string) goast.Expr {
 	if resolved.TypeReference.Name() == GeneralizedTimeName || resolved.TypeReference.Name() == UTCTimeName {
 		// time types in encoding/asn1go don't support wrapping of time.Time
 		ctx.requireModule("time")
-		return goast.NewIdent("time.Time")
+		return goast.NewIdent(prefix + "time.Time")
 	} else if _, ok := ctx.removeWrapperTypes(resolved.Type).(BitStringType); ok {
 		ctx.requireModule("encoding/asn1")
 		return goast.NewIdent("asn1.BitString")

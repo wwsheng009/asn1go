@@ -647,7 +647,7 @@ func UpdateTypeList(modules []ModuleDefinition) {
 			name := assignment.Reference().Name()
 			find := module.ModuleBody.AssignmentList.GetType(name)
 			if find != nil {
-				USEFUL_TYPES[name] = module.ModuleBody.AssignmentList.GetType(name).Type
+				USEFUL_TYPES[name] = find.Type
 				USEFUL_TYPES_MODULE[name] = module.ModuleIdentifier.Reference
 			} else {
 				value := module.ModuleBody.AssignmentList.GetValue(name)

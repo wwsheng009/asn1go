@@ -2,8 +2,8 @@ package utils
 
 import (
 	"bytes"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,10 +28,10 @@ func ParseWiresharkHex(str string) []byte {
 	return buf.Bytes()
 }
 
-func ParseWiresharkTime(repr string) time.Time {
+func ParseWiresharkTime(repr string) *time.Time {
 	t, err := time.Parse(WS_TIME_FORMAT, repr)
 	if err != nil {
 		panic(err)
 	}
-	return t
+	return &t
 }
